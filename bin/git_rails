@@ -114,17 +114,6 @@ if [ "$verbose" -eq 1 ]; then
   fi
 fi
 
-# okay, now actually run whatever's needed
-if [ ! -z "$bundle_changed" ]; then
-  echo "Your Gemfile.lock has changed, running bundle"
-  bundle
-fi
-
-if [ ! -z "$yarn_changed" ]; then
-  echo "Your yarn.lock has changed, running yarn"
-  yarn
-fi
-
 if [ ! -z "$migrations" ]; then
   echo "Running migrations!"
   for migration in $migrations
@@ -163,4 +152,17 @@ if [ ! -z "$migrations" ]; then
     git reset $new_ref -- $migration_cleanup
     rm $migration_cleanup
   fi
+fi
+
+
+# okay, now actually run whatever's needed
+if [ ! -z "$bundle_changed" ]; then
+  echo "Your Gemfile.lock has changed, running bundle"
+  bundle install
+  docker-compose run --rm application bundle install
+fi
+
+if [ ! -z "$yarn_changed" ]; then
+  echo "Your yarn.lock has changed, running yarn"
+  yarn
 fi
