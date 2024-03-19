@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -x
+
 function help {
   echo -e "\nUsage:"
   echo -e "\tgit-rails [-d] [-v] [-y] [src_ref] [dest_ref]"
@@ -129,29 +131,28 @@ if [ ! -z "$migrations" ]; then
 
     # BUILD THE MIGRATION COMMAND FROM THE VERSION AND TYPE
     version=`echo "$migration" | cut -d'_' -f1 | cut -d'/' -f3`
-    migrate_command="ActiveRecord::Migrator.run(:$migration_type, 'db/migrate', $version) rescue nil"
+    migrate_command="bundle exec rails db:migrate:down VERSION=\"$version\""
 
     # APPEND OR PREPREND TO THE COMMAND LIST DEPENDING ON MIGRATION TYPE
     if [[ $migration_type == "down" ]]; then
       # CHECKOUT DOWN MIGRATION AND SAVE PATH FOR CLEANUP
       git checkout "$old_ref" -- "$migration"
       migration_cleanup="$migration_cleanup $migration"
-      migrate_commands="$migrate_command;$migrate_commands"
-    else
-      migrate_commands="$migrate_commands;$migrate_command"
+      migrate_commands="$migrate_command && $migrate_commands"
     fi
   done
 
   # RUN THE MIGRATIONS (AND TEST PREPARE)
-  {
-    echo "$migrate_commands" | bundle exec rails runner /dev/stdin
-  } > $out_target
+  echo "set -e; $migrate_commands" | bash
+
 
   # CLEAN UP DOWN MIGRATIONS
   if [ ! -z "$migration_cleanup" ]; then
     git reset $new_ref -- $migration_cleanup
     rm $migration_cleanup
   fi
+
+  bundle exec rails db:migrate
 fi
 
 
