@@ -138,12 +138,17 @@ if [ ! -z "$migrations" ]; then
       # CHECKOUT DOWN MIGRATION AND SAVE PATH FOR CLEANUP
       git checkout "$old_ref" -- "$migration"
       migration_cleanup="$migration_cleanup $migration"
-      migrate_commands="$migrate_command && $migrate_commands"
+      if [ -z "$migrate_commands" ]
+      then
+        migrate_commands="$migrate_command"
+      else
+        migrate_commands="$migrate_command; $migrate_commands"
+      fi
     fi
   done
 
   # RUN THE MIGRATIONS (AND TEST PREPARE)
-  echo "set -e; $migrate_commands" | bash
+  echo "$migrate_commands" | bash
 
 
   # CLEAN UP DOWN MIGRATIONS
