@@ -118,45 +118,42 @@ fi
 
 if [ ! -z "$migrations" ]; then
   echo "Running migrations!"
-  for migration in $migrations
-  do
-    # CHECK THE MIGRATION TYPE AND CONTINUE TO THE FILENAME
-    if [ $migration == "D" ]; then
-      migration_type="down"
-      continue
-    elif [ $migration == "A" ]; then
-      migration_type="up"
-      continue
-    fi
+  EARLIEST_DOWN_MIGRATION=$(echo $migrations | grep '^[D]' | awk -F'_' '{print $1}' | awk -F/ '{print $3}' | sort -n | head -n 1)
 
-    # BUILD THE MIGRATION COMMAND FROM THE VERSION AND TYPE
-    version=`echo "$migration" | cut -d'_' -f1 | cut -d'/' -f3`
-    migrate_command="bundle exec rails db:migrate:down VERSION=\"$version\""
+  if [ "$EARLIEST_DOWN_MIGRATION" ]
+  then
+    ROLLBACK_FILENAME=$(find db/migrate -maxdepth 1 -type f -name "*.rb" | awk -F'/' -v EARLIEST_DOWN_MIGRATION=$EARLIEST_DOWN_MIGRATION '{split($NF, a, "_"); if (a[1] < EARLIEST_DOWN_MIGRATION) print $0}' | sort -n | tail -n 1)
+    ROLLBACK_VERSION=$(echo $ROLLBACK_FILENAME | awk -F'/' '{print $NF}' | awk -F'_' '{print $1}')
 
-    # APPEND OR PREPREND TO THE COMMAND LIST DEPENDING ON MIGRATION TYPE
-    if [[ $migration_type == "down" ]]; then
-      # CHECKOUT DOWN MIGRATION AND SAVE PATH FOR CLEANUP
-      git checkout "$old_ref" -- "$migration"
-      migration_cleanup="$migration_cleanup $migration"
-      if [ -z "$migrate_commands" ]
-      then
-        migrate_commands="$migrate_command"
-      else
-        migrate_commands="$migrate_command; $migrate_commands"
+    for migration in $migrations
+    do
+      # CHECK THE MIGRATION TYPE AND CONTINUE TO THE FILENAME
+      if [ $migration == "D" ]; then
+        migration_type="down"
+        continue
+      elif [ $migration == "A" ]; then
+        migration_type="up"
+        continue
       fi
+
+      # CHECKOUT DOWN MIGRATION AND SAVE PATH FOR CLEANUP
+      if [[ $migration_type == "down" ]]; then
+        git checkout "$old_ref" -- "$migration"
+        migration_cleanup="$migration_cleanup $migration"
+      fi
+    done
+
+    # ROLLBACK MIGRATIONS
+    bundle exec rails db:migrate VERSION=$ROLLBACK_VERSION
+
+    # CLEAN UP DOWN MIGRATIONS
+    if [ ! -z "$migration_cleanup" ]; then
+      git reset $new_ref -- $migration_cleanup
+      rm $migration_cleanup
     fi
-  done
-
-  # RUN THE MIGRATIONS (AND TEST PREPARE)
-  echo "$migrate_commands" | bash
-
-
-  # CLEAN UP DOWN MIGRATIONS
-  if [ ! -z "$migration_cleanup" ]; then
-    git reset $new_ref -- $migration_cleanup
-    rm $migration_cleanup
   fi
 
+  # RUN MIGRATIONS
   bundle exec rails db:migrate
 fi
 
